@@ -1,14 +1,36 @@
 # This file is a part of JuliaFEM.
 # License is MIT: see https://github.com/JuliaFEM/FEMBase.jl/blob/master/LICENSE
 
-abstract type AbstractElement{T<:FEMBasis.AbstractBasis} end
+"""
+    AbstractFieldSet{N<:Int}
 
-mutable struct Element{T} <: AbstractElement{T}
+Abstract supertype for all field sets, where `N` is the length of the discrete
+fields (typically is the number of the nodes in element).
+"""
+abstract type AbstractFieldSet{N} end
+
+"""
+    DefaultFieldSet{N} <: AbstractFieldSet{N}
+
+Default field set for all elements.
+"""
+struct DefaultFieldSet{N} <: AbstractFieldSet{N}
+end
+
+"""
+    AbstractElement{M<:AbstractFieldSet, B<:AbstractBasis}
+
+Abstract supertype for all elements.
+"""
+abstract type AbstractElement{M<:AbstractFieldSet, B<:FEMBasis.AbstractBasis} end
+
+mutable struct Element{M, B} <: AbstractElement{M, B}
     id :: Int
     connectivity :: Vector{Int}
     integration_points :: Vector{IP}
     dfields :: Dict{Symbol, AbstractField}
-    properties :: T
+    sfields :: M
+    properties :: B
 end
 
 """
@@ -50,9 +72,13 @@ element = Element(Tri3, (1, 2, 3))
 function Element(::Type{T}, connectivity::NTuple{N, Int}) where {N, T<:FEMBasis.AbstractBasis}
     element_id = -1
     topology = T()
+    nnodes = length(topology)
     integration_points = []
-    fields = Dict()
-    element = Element{T}(element_id, collect(connectivity), integration_points, fields, topology)
+    dfields = Dict()
+    M = DefaultFieldSet{nnodes}
+    sfields = M()
+    element = Element{M,T}(element_id, collect(connectivity), integration_points,
+                           dfields, sfields, topology)
     return element
 end
 
@@ -88,14 +114,13 @@ Returns a dictionary, where key is the element type and value is a vector
 containing all elements of type `element_type`.
 """
 function group_by_element_type(elements)
-    results = Dict{DataType, Any}()
-    basis_types = map(element -> typeof(element.properties), elements)
-    for basis in unique(basis_types)
-        element_type = Element{basis}
-        subset = filter(element -> isa(element, element_type), elements)
-        results[element_type] = convert(Vector{element_type}, subset)
+    eltypes = map(T -> typeof(T), elements)
+    elgroups = Dict(T => T[] for T in eltypes)
+    for element in elements
+        T = typeof(element)
+        push!(elgroups[T], element)
     end
-    return results
+    return elgroups
 end
 
 ### dfields - dynamically defined fields
@@ -335,14 +360,14 @@ end
 
 ## Other stuff
 
-function get_basis(element::AbstractElement{B}, ip, ::Any) where B
+function get_basis(element::AbstractElement{M,B}, ip, ::Any) where {M,B}
     T = typeof(first(ip))
     N = zeros(T, 1, length(element))
     FEMBasis.eval_basis!(B, N, tuple(ip...))
     return N
 end
 
-function get_dbasis(element::AbstractElement{B}, ip, ::Any) where B
+function get_dbasis(element::AbstractElement{M,B}, ip, ::Any) where {M,B}
     T = typeof(first(ip))
     dN = zeros(T, size(element)...)
     FEMBasis.eval_dbasis!(B, dN, tuple(ip...))
@@ -441,9 +466,9 @@ function get_local_coordinates(element::AbstractElement, X::Vector, time::Float6
 end
 
 """ Test is X inside element. """
-function inside(element::AbstractElement{E}, X, time) where E
+function inside(element::AbstractElement{M,B}, X, time) where {M,B}
     xi = get_local_coordinates(element, X, time)
-    return inside(E, xi)
+    return inside(B, xi)
 end
 
 ## Convenience functions
