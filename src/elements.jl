@@ -10,12 +10,14 @@ fields (typically is the number of the nodes in element).
 abstract type AbstractFieldSet{N} end
 
 """
-    DefaultFieldSet{N} <: AbstractFieldSet{N}
+    EmptyFieldSet{N} <: AbstractFieldSet{N}
 
-Default field set for all elements.
+Empty field set used as a default for all elements.
 """
-struct DefaultFieldSet{N} <: AbstractFieldSet{N}
+struct EmptyFieldSet{N} <: AbstractFieldSet{N}
 end
+
+const DefaultFieldSet = EmptyFieldSet
 
 """
     AbstractElement{M<:AbstractFieldSet, B<:AbstractBasis}
@@ -72,10 +74,20 @@ element = Element(Tri3, (1, 2, 3))
 function Element(::Type{T}, connectivity::NTuple{N, Int}) where {N, T<:FEMBasis.AbstractBasis}
     element_id = -1
     topology = T()
-    nnodes = length(topology)
     integration_points = []
     dfields = Dict()
-    M = DefaultFieldSet{nnodes}
+    M = DefaultFieldSet{N}
+    sfields = M()
+    element = Element{M,T}(element_id, collect(connectivity), integration_points,
+                           dfields, sfields, topology)
+    return element
+end
+
+function Element(::Type{T}, ::Type{M}, connectivity::NTuple{N, Int}) where {N, M<:AbstractFieldSet, T<:FEMBasis.AbstractBasis}
+    element_id = -1
+    topology = T()
+    integration_points = []
+    dfields = Dict()
     sfields = M()
     element = Element{M,T}(element_id, collect(connectivity), integration_points,
                            dfields, sfields, topology)
@@ -86,16 +98,16 @@ function Element(::Type{T}, connectivity::Vector{Int}) where T<:FEMBasis.Abstrac
     return Element(T, (connectivity...,))
 end
 
-function get_element_type(::AbstractElement{E}) where E
-    return E
-end
-
-function get_element_id(element::AbstractElement{E}) where E
+function get_element_id(element::AbstractElement)
     return element.id
 end
 
-function is_element_type(::AbstractElement{E}, element_type) where E
-    return E === element_type
+function get_element_type(::AbstractElement{M,T}) where {M,T}
+    return T
+end
+
+function is_element_type(::AbstractElement{M,T}, element_type) where {M,T}
+    return T === element_type
 end
 
 function filter_by_element_type(element_type, elements)
@@ -483,7 +495,7 @@ function (element::Element)(field_name::String, ip, time::Float64)
     return interpolate(element, field_name, ip, time)
 end
 
-function element_info!(bi::FEMBasis.BasisInfo{E,T}, element::AbstractElement{E}, ip, time) where {E,T}
+function element_info!(bi::FEMBasis.BasisInfo{T}, element::AbstractElement{M,T}, ip, time) where {M,T}
     X = interpolate(element, "geometry", time)
     eval_basis!(bi, X, ip)
     return bi.J, bi.detJ, bi.N, bi.grad

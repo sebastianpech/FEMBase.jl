@@ -91,8 +91,8 @@ end
     elements = [e1, e2]
     elgroups = group_by_element_type(elements)
     @test length(elgroups) == 2
-    @test first(elgroups[typeof(e1)] == e1)
-    @test first(elgroups[typeof(e2)] == e2)
+    @test first(elgroups[typeof(e1)]) == e1
+    @test first(elgroups[typeof(e2)]) == e2
     @test get_element_type(e1) == Seg2
     e1.id = 1
     @test get_element_id(e1) == 1
